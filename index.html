@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Graph Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <style>
+        :root {
+            --primary: #4CAF50;
+            --bg: #f4f4f9;
+            --text: #333;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .screen { display: none; text-align: center; width: 100%; max-width: 800px; }
+        .screen.active { display: block; }
+        
+        h1 { font-size: 2.5rem; margin-bottom: 20px; }
+        
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 10px;
+            font-size: 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #45a049; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        
+        .level-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .level-btn { width: 60px; height: 60px; font-size: 1.5rem; }
+        
+        #game-container { position: relative; margin: 0 auto; }
+        canvas {
+            background-color: white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+        
+        #ui-bar {
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 1.2rem;
+        }
+        input[type="text"] {
+            padding: 10px;
+            font-size: 1.2rem;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            width: 300px;
+        }
+        
+        .section-title { margin-top: 30px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        #message { height: 30px; font-weight: bold; margin-top: 10px; color: #d32f2f; }
+    </style>
+</head>
+<body>
+
+    <div id="menu-screen" class="screen active">
+        <h1>Graph Challenge</h1>
+        <button onclick="showScreen('level-screen')">Single Player</button>
+        <button onclick="alert('Multiplayer will connect to aublydg.pythonanywhere.com soon!')">Multiplayer</button>
+    </div>
+
+    <div id="level-screen" class="screen">
+        <h1>Select Level</h1>
+        
+        <h2 class="section-title">Basic Levels (1 - 5)</h2>
+        <div class="level-grid" id="basic-levels"></div>
+        
+        <h2 class="section-title">Challenges (Unlock after Basic)</h2>
+        <div class="level-grid" id="challenge-levels"></div>
+        
+        <h2 class="section-title">Community</h2>
+        <button onclick="alert('Community levels coming soon!')" style="background-color: #9c27b0;">Browse Custom Levels</button>
+        <br><br>
+        <button onclick="showScreen('menu-screen')" style="background-color: #777;">Back to Menu</button>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <h2 id="level-title">Level</h2>
+        <div id="game-container">
+            <canvas id="gameCanvas" width="800" height="500"></canvas>
+        </div>
+        <div id="ui-bar">
+            <span>f(x) = </span>
+            <input type="text" id="function-input" placeholder="e.g. x^2 or sin(x)" autocomplete="off">
+            <button onclick="fireFunction()">Fire!</button>
+            <button onclick="showScreen('level-screen')" style="background-color: #777;">Back</button>
+        </div>
+        <div id="message"></div>
+    </div>
+
+<script>
+    // --- GAME STATE & DATA ---
+    let unlockedLevel = 1; 
+    let currentLevel = null;
+    let animationId = null;
+
+    // The logic requested: Player inputs f(x). Graph starts at player position.
+    // x starts at 0 and increases. So global pos is (px + x, py + f(x)).
+    
+    // Level Design: player[x,y], target[x,y], obstacles[[x,y,radius], ...]
+    const levels = [
+        // Basic 1-5
+        { id: 1, p: [-8, 0], t: [8, 0], obs: [] }, // Straight line
+        { id: 2, p: [-8, 4], t: [8, -4], obs: [] }, // Negative slope
+        { id: 3, p: [-5, -4], t: [3, 4], obs: [] }, // Quadratic
+        { id: 4, p: [-8, 0], t: [8, 0], obs: [[0, 0, 2]] }, // Small bump (needs curve)
+        { id: 5, p: [-8, 0], t: [8, 0], obs: [[-4, 0, 1.5], [0, 0, 1.5], [4, 0, 1.5]] }, // Sine wave
+
+        // Challenges 6-15 designed for you!
+        { id: 6, p: [-8, -6], t: [8, 6], obs: [[0, 0, 3]] }, // Over or under a big center obstacle
+        { id: 7, p: [-8, 6], t: [8, 6], obs: [[0, 4, 3]] }, // Go underneath
+        { id: 8, p: [-9, -8], t: [9, 8], obs: [[-4, -2, 2], [4, 2, 2]] }, // S-curve / cubic
+        { id: 9, p: [-8, 0], t: [8, -8], obs: [[0, -4, 2]] }, // Steep drop
+        { id: 10, p: [-8, -2], t: [8, -2], obs: [[0, -5, 2], [0, 1, 2]] }, // Thread the needle
+        { id: 11, p: [-6, -6], t: [6, -6], obs: [[0, -6, 2]] }, // Hop over low obstacle
+        { id: 12, p: [-9, 0], t: [9, 0], obs: [[-6,0,1], [-3,0,1], [0,0,1], [3,0,1], [6,0,1]] }, // High frequency sine wave
+        { id: 13, p: [-8, -8], t: [8, 8], obs: [[0, 8, 4], [0, -8, 4]] }, // Tight diagonal squeeze
+        { id: 14, p: [-6, 0], t: [6, 0], obs: [[0, 2, 1], [0, 4, 1], [0, 6, 1]] }, // Block wall above
+        { id: 15, p: [-9, -9], t: [9, 9], obs: [[-5, -5, 2], [0, 0, 2], [5, 5, 2]] } // Boss level: weave between diagonal obstacles
+    ];
+
+    // --- UI NAVIGATION ---
+    function showScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+        if (screenId === 'level-screen') generateLevelButtons();
+        if (animationId) cancelAnimationFrame(animationId);
+        document.getElementById('message').innerText = "";
+    }
+
+    function generateLevelButtons() {
+        const basicContainer = document.getElementById('basic-levels');
+        const challengeContainer = document.getElementById('challenge-levels');
+        basicContainer.innerHTML = '';
+        challengeContainer.innerHTML = '';
+
+        levels.forEach(lvl => {
+            const btn = document.createElement('button');
+            btn.className = 'level-btn';
+            btn.innerText = lvl.id;
+            
+            // Locking logic
+            if (lvl.id > unlockedLevel) {
+                btn.disabled = true;
+            } else {
+                btn.onclick = () => loadLevel(lvl.id);
+            }
+
+            if (lvl.id <= 5) basicContainer.appendChild(btn);
+            else {
+                // Challenges are locked until Level 5 is beaten
+                if (unlockedLevel <= 5) btn.disabled = true;
+                challengeContainer.appendChild(btn);
+            }
+        });
+    }
+
+    // --- GAME ENGINE ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const UNIT = 40; // 40 pixels = 1 math unit
+    
+    // Convert math coordinates to canvas coordinates
+    const cx = (x) => canvas.width / 2 + x * UNIT;
+    const cy = (y) => canvas.height / 2 - y * UNIT;
+
+    let tracePath = [];
+    let isDrawing = false;
+    let localX = 0;
+    let currentParsedFunc = null;
+
+    function loadLevel(id) {
+        currentLevel = levels.find(l => l.id === id);
+        document.getElementById('level-title').innerText = `Level ${id}`;
+        document.getElementById('function-input').value = "";
+        resetGraph();
+        showScreen('game-screen');
+    }
+
+    function resetGraph() {
+        tracePath = [];
+        isDrawing = false;
+        localX = 0;
+        document.getElementById('message').innerText = "";
+        drawScene();
+    }
+
+    function drawScene() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 1. Draw Graph Paper Background
+        ctx.strokeStyle = "#eee";
+        ctx.lineWidth = 1;
+        for(let i = 0; i <= canvas.width; i += UNIT) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+        }
+        for(let i = 0; i <= canvas.height; i += UNIT) {
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+        }
+
+        // 2. Draw Axes
+        ctx.strokeStyle = "#aaa";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2); ctx.stroke(); // X
+        ctx.beginPath(); ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height); ctx.stroke(); // Y
+
+        if (!currentLevel) return;
+
+        // 3. Draw Obstacles (Black Circles)
+        ctx.fillStyle = "#222";
+        currentLevel.obs.forEach(o => {
+            ctx.beginPath();
+            ctx.arc(cx(o[0]), cy(o[1]), o[2] * UNIT, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // 4. Draw Target (Emoji)
+        ctx.font = "30px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("🎯", cx(currentLevel.t[0]), cy(currentLevel.t[1]));
+
+        // 5. Draw Player Line Trace
+        if (tracePath.length > 0) {
+            ctx.strokeStyle = "#ffeb3b"; // Bright line
+            ctx.shadowColor = "#f57f17";
+            ctx.shadowBlur = 10;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(cx(tracePath[0].x), cy(tracePath[0].y));
+            for(let i = 1; i < tracePath.length; i++) {
+                ctx.lineTo(cx(tracePath[i].x), cy(tracePath[i].y));
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0; // Reset
+        }
+
+        // 6. Draw Player Base
+        ctx.fillText("🚀", cx(currentLevel.p[0]), cy(currentLevel.p[1]));
+    }
+
+    function fireFunction() {
+        const funcStr = document.getElementById('function-input').value;
+        if (!funcStr) return;
+
+        try {
+            // Compile math expression using Math.js
+            currentParsedFunc = math.compile(funcStr);
+            // Test evaluation at x=0 to catch errors early
+            currentParsedFunc.evaluate({x: 0}); 
+            
+            resetGraph();
+            isDrawing = true;
+            animate();
+        } catch (err) {
+            document.getElementById('message').innerText = "Invalid mathematical function! Try again.";
+            document.getElementById('message').style.color = "#d32f2f";
+        }
+    }
+
+    function animate() {
+        if (!isDrawing) return;
+
+        // Step x forward
+        const step = 0.1;
+        localX += step;
+
+        try {
+            // Calculate relative Y
+            const relativeY = currentParsedFunc.evaluate({ x: localX });
+            
+            // Calculate absolute world coordinates
+            const worldX = currentLevel.p[0] + localX;
+            const worldY = currentLevel.p[1] + relativeY;
+
+            tracePath.push({ x: worldX, y: worldY });
+            drawScene();
+
+            // Collision Detection
+            if (checkCollisions(worldX, worldY)) return; // Stop if hit something
+
+            // Continue animation
+            animationId = requestAnimationFrame(animate);
+
+        } catch(e) {
+            isDrawing = false;
+        }
+    }
+
+    function checkCollisions(wx, wy) {
+        const targetRadius = 0.8; // Approximate emoji hit radius
+        const pxWy = cy(wy);
+        const pxWx = cx(wx);
+
+        // 1. Check Screen Borders
+        if (pxWx < 0 || pxWx > canvas.width || pxWy < 0 || pxWy > canvas.height) {
+            endGame(false, "Graph touched the screen edge! Line broken.");
+            return true;
+        }
+
+        // 2. Check Obstacles
+        for (let o of currentLevel.obs) {
+            let dist = Math.hypot(wx - o[0], wy - o[1]);
+            if (dist < o[2]) {
+                endGame(false, "Hit an obstacle! Line broken.");
+                return true;
+            }
+        }
+
+        // 3. Check Target (Emoji)
+        let distToTarget = Math.hypot(wx - currentLevel.t[0], wy - currentLevel.t[1]);
+        if (distToTarget < targetRadius) {
+            endGame(true, "Target Reached! 關卡 Pass!");
+            return true;
+        }
+
+        return false;
+    }
+
+    function endGame(win, msg) {
+        isDrawing = false;
+        const msgDiv = document.getElementById('message');
+        msgDiv.innerText = msg;
+        
+        if (win) {
+            msgDiv.style.color = "#4CAF50";
+            if (currentLevel.id === unlockedLevel && unlockedLevel < 15) {
+                unlockedLevel++;
+            }
+            setTimeout(() => {
+                showScreen('level-screen');
+            }, 2000); // Go back to level select after 2 seconds
+        } else {
+            msgDiv.style.color = "#d32f2f";
+        }
+    }
+</script>
+</body>
+</html>
