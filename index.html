@@ -3,217 +3,582 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>距離Matthew離開</title>
+<title>倒數計時器</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+  :root{
+    --card: rgba(255,255,255,.045);
+    --line: rgba(150,185,255,.18);
+    --muted: #8ba3d4;
   }
+  *{ margin:0; padding:0; box-sizing:border-box; }
 
-  body {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(circle at 50% 30%, #1b2a4a 0%, #0b1120 60%, #05070d 100%);
-    font-family: "Helvetica Neue", "PingFang TC", "Microsoft JhengHei", sans-serif;
-    color: #e8eefc;
-    overflow: hidden;
-    padding: 20px;
+  body{
+    min-height:100vh;
+    display:flex; flex-direction:column;
+    background: radial-gradient(circle at 50% 25%, #1b2a4a 0%, #0b1120 60%, #05070d 100%);
+    font-family:"Helvetica Neue","PingFang TC","Microsoft JhengHei",sans-serif;
+    color:#e8eefc;
+    padding:18px;
+    overflow-x:hidden;
   }
-
-  /* 背景微光動畫 */
-  body::before {
-    content: "";
-    position: fixed;
-    inset: -50%;
-    background: radial-gradient(circle, rgba(90,150,255,0.12) 0%, transparent 55%);
+  body::before{
+    content:""; position:fixed; inset:-50%;
+    background: radial-gradient(circle, rgba(90,150,255,.12) 0%, transparent 55%);
     animation: drift 14s ease-in-out infinite alternate;
-    pointer-events: none;
+    pointer-events:none; z-index:0;
+  }
+  @keyframes drift{
+    from{ transform: translate(-8%,-6%) scale(1); }
+    to  { transform: translate(8%,6%) scale(1.15); }
   }
 
-  @keyframes drift {
-    from { transform: translate(-8%, -6%) scale(1); }
-    to   { transform: translate(8%, 6%) scale(1.15); }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; flex-wrap:wrap;
+    max-width:1000px; width:100%; margin:0 auto;
+    position:relative; z-index:2;
+  }
+  .brand{ font-weight:700; letter-spacing:.2em; color:#9ec5ff; font-size:.85rem; }
+  .status{ font-size:.7rem; letter-spacing:.15em; color:var(--muted); }
+  .status.ok{ color:#7ee0a8; }
+  .status.err{ color:#ff9a9a; }
+  .actions{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  .btn{
+    border:1px solid var(--line);
+    background:rgba(255,255,255,.05);
+    color:#cfe0ff;
+    padding:8px 14px; border-radius:10px;
+    font-size:.82rem; letter-spacing:.08em;
+    cursor:pointer; transition:.2s; font-family:inherit;
+  }
+  .btn:hover{ background:rgba(255,255,255,.12); transform:translateY(-1px); }
+  .btn.primary{
+    background:linear-gradient(135deg,#3d7bff,#6aa8ff);
+    border-color:transparent; color:#fff; font-weight:600;
+  }
+  .btn.danger{ border-color:rgba(255,120,120,.35); color:#ffb4b4; }
+  .btn.danger:hover{ background:rgba(255,80,80,.15); }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+  .tabs{
+    display:flex; gap:8px; flex-wrap:wrap; justify-content:center;
+    max-width:1000px; width:100%; margin:22px auto 0;
+    position:relative; z-index:2;
+  }
+  .tab{
+    border:1px solid var(--line);
+    background:rgba(255,255,255,.04);
+    color:#9db2d8;
+    padding:7px 16px; border-radius:999px;
+    font-size:.82rem; cursor:pointer; transition:.2s;
+    font-family:inherit; max-width:240px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .tab:hover{ color:#dbe8ff; background:rgba(255,255,255,.08); }
+  .tab.active{
+    color:#fff;
+    background:linear-gradient(135deg, rgba(61,123,255,.35), rgba(106,168,255,.25));
+    border-color:rgba(120,170,255,.6);
+    box-shadow:0 0 18px rgba(90,150,255,.3);
   }
 
-  .title {
-    font-size: clamp(1.6rem, 5vw, 3rem);
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    text-align: center;
-    margin-bottom: 0.6rem;
-    background: linear-gradient(90deg, #9ec5ff, #ffffff, #9ec5ff);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    text-shadow: 0 0 32px rgba(120,170,255,0.35);
-    position: relative;
-    z-index: 1;
+  .stage{
+    flex:1;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    text-align:center; gap:4px;
+    position:relative; z-index:1;
+    padding:40px 0 20px;
+  }
+  .name{
+    font-size:clamp(1.5rem,5vw,3rem);
+    font-weight:700; letter-spacing:.14em;
+    background:linear-gradient(90deg,#9ec5ff,#fff,#9ec5ff);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 22px rgba(120,170,255,.35));
+    max-width:90vw; word-break:break-word;
+  }
+  .subtitle{
+    font-size:clamp(.72rem,2.2vw,1rem);
+    letter-spacing:.3em; color:#7f95c4;
+    margin-bottom:2.4rem;
   }
 
-  .subtitle {
-    font-size: clamp(0.75rem, 2.2vw, 1rem);
-    letter-spacing: 0.35em;
-    color: #7f95c4;
-    margin-bottom: 3rem;
-    text-align: center;
-    position: relative;
-    z-index: 1;
+  .countdown{ display:flex; gap:clamp(10px,2.5vw,26px); flex-wrap:wrap; justify-content:center; }
+  .unit{
+    display:flex; flex-direction:column; align-items:center;
+    min-width:clamp(70px,18vw,126px);
+    padding:clamp(14px,3vw,24px) clamp(8px,2vw,18px);
+    border-radius:18px;
+    background:var(--card);
+    border:1px solid var(--line);
+    box-shadow:0 8px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+    backdrop-filter:blur(8px);
+    transition:transform .25s;
+  }
+  .unit:hover{ transform:translateY(-6px); }
+  .number{
+    font-size:clamp(1.9rem,7vw,3.8rem);
+    font-weight:700; font-variant-numeric:tabular-nums;
+    line-height:1.05; color:#fff;
+    text-shadow:0 0 18px rgba(130,180,255,.55);
+  }
+  .label{
+    margin-top:.5rem;
+    font-size:clamp(.62rem,1.8vw,.8rem);
+    letter-spacing:.2em; color:var(--muted);
+  }
+  .pulse{ animation:pulse .9s ease-out; }
+  @keyframes pulse{
+    0%{ transform:scale(1); } 35%{ transform:scale(1.09); } 100%{ transform:scale(1); }
+  }
+  .finished{
+    font-size:clamp(1.1rem,4vw,1.9rem);
+    letter-spacing:.2em; color:#ffd9a0;
+    text-shadow:0 0 24px rgba(255,190,100,.5);
+    padding:24px;
   }
 
-  .countdown {
-    display: flex;
-    gap: clamp(10px, 2.5vw, 28px);
-    flex-wrap: wrap;
-    justify-content: center;
-    position: relative;
-    z-index: 1;
-  }
+  .ctrl{ margin-top:2rem; display:flex; gap:10px; justify-content:center; }
 
-  .unit {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-width: clamp(70px, 18vw, 130px);
-    padding: clamp(14px, 3vw, 26px) clamp(8px, 2vw, 20px);
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.045);
-    border: 1px solid rgba(150, 185, 255, 0.18);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.08);
-    backdrop-filter: blur(8px);
-    transition: transform 0.25s ease;
+  .overlay{
+    position:fixed; inset:0; z-index:50;
+    background:rgba(3,6,14,.75);
+    backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center;
+    padding:20px;
+    opacity:0; visibility:hidden; transition:.22s;
   }
-
-  .unit:hover {
-    transform: translateY(-6px);
+  .overlay.show{ opacity:1; visibility:visible; }
+  .modal{
+    width:min(440px,100%);
+    background:#101a2e;
+    border:1px solid rgba(120,170,255,.22);
+    border-radius:20px;
+    padding:26px;
+    box-shadow:0 24px 60px rgba(0,0,0,.6);
+    display:flex; flex-direction:column; gap:16px;
+    transform:translateY(12px); transition:.22s;
   }
-
-  .number {
-    font-size: clamp(1.9rem, 7vw, 4rem);
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    line-height: 1.05;
-    color: #ffffff;
-    text-shadow: 0 0 18px rgba(130, 180, 255, 0.55);
+  .overlay.show .modal{ transform:translateY(0); }
+  .modal h2{ font-size:1.05rem; letter-spacing:.12em; color:#cfe0ff; font-weight:600; }
+  .modal label{
+    display:flex; flex-direction:column; gap:7px;
+    font-size:.75rem; letter-spacing:.14em; color:var(--muted);
   }
-
-  .label {
-    margin-top: 0.5rem;
-    font-size: clamp(0.65rem, 1.8vw, 0.85rem);
-    letter-spacing: 0.22em;
-    color: #8ba3d4;
+  .modal input{
+    font-family:inherit; font-size:.92rem;
+    padding:10px 12px; border-radius:10px;
+    border:1px solid rgba(150,185,255,.2);
+    background:rgba(255,255,255,.05);
+    color:#e8eefc; outline:none; transition:.2s;
+    color-scheme:dark;
   }
-
-  /* 秒數跳動效果 */
-  .pulse {
-    animation: pulse 1s ease-out;
+  .modal input:focus{
+    border-color:rgba(120,170,255,.7);
+    box-shadow:0 0 0 3px rgba(90,150,255,.15);
   }
-
-  @keyframes pulse {
-    0%   { transform: scale(1);    }
-    35%  { transform: scale(1.09); }
-    100% { transform: scale(1);    }
-  }
-
-  .finished {
-    font-size: clamp(1.2rem, 4vw, 2rem);
-    letter-spacing: 0.2em;
-    text-align: center;
-    color: #ffd9a0;
-    text-shadow: 0 0 24px rgba(255, 190, 100, 0.5);
-    position: relative;
-    z-index: 1;
-  }
-
-  .footer {
-    position: fixed;
-    bottom: 18px;
-    font-size: 0.7rem;
-    letter-spacing: 0.25em;
-    color: #4d5f83;
-    z-index: 1;
-  }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:6px; }
 </style>
 </head>
 <body>
 
-  <h1 class="title">距離Matthew離開</h1>
-  <div class="subtitle">2027 . 07 . 15</div>
-
-  <div class="countdown" id="countdown">
-    <div class="unit">
-      <span class="number" id="days">--</span>
-      <span class="label">天 DAYS</span>
+  <div class="topbar">
+    <div>
+      <div class="brand">⏳ COUNTDOWN</div>
+      <div class="status" id="status">連線中…</div>
     </div>
-    <div class="unit">
-      <span class="number" id="hours">--</span>
-      <span class="label">時 HOURS</span>
-    </div>
-    <div class="unit">
-      <span class="number" id="minutes">--</span>
-      <span class="label">分 MINUTES</span>
-    </div>
-    <div class="unit">
-      <span class="number" id="seconds">--</span>
-      <span class="label">秒 SECONDS</span>
+    <div class="actions">
+      <button class="btn primary" id="btnAdd">＋ 新增倒數</button>
     </div>
   </div>
 
-  <div class="footer">倒數中 · COUNTING DOWN</div>
+  <div class="tabs" id="tabs"></div>
+
+  <div class="stage">
+    <div class="name" id="cName">—</div>
+    <div class="subtitle" id="cSub"></div>
+    <div class="countdown" id="countdown"></div>
+    <div class="ctrl" id="ctrl">
+      <button class="btn" id="btnEdit">編輯</button>
+      <button class="btn danger" id="btnDelete">刪除</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <form class="modal" id="form">
+      <h2 id="formTitle">新增倒數</h2>
+      <label>名稱
+        <input id="fName" maxlength="40" required placeholder="例如：距離 Matthew 離開">
+      </label>
+      <label>副標題（選填）
+        <input id="fSub" maxlength="60" placeholder="例如：2027 . 07 . 15">
+      </label>
+      <label>結束時間
+        <input type="datetime-local" id="fTime" required>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnCancel">取消</button>
+        <button type="submit" class="btn primary" id="btnSave">儲存</button>
+      </div>
+    </form>
+  </div>
 
 <script>
-  // 目標時間：2027 年 7 月 15 日 00:00:00（本地時間）
-  const targetDate = new Date(2027, 6, 15, 0, 0, 0).getTime();
+/* ============================================================
+   Supabase 設定（只用 publishable key，安全）
+   ============================================================ */
+const SUPABASE_URL = 'https://ddkrgberdggasvamtqzl.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Z-QjRGngVjA-pFdojuLYyQ_z6nQwXlN';
 
-  const el = {
-    days:    document.getElementById('days'),
-    hours:   document.getElementById('hours'),
-    minutes: document.getElementById('minutes'),
-    seconds: document.getElementById('seconds')
-  };
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  const countdownBox = document.getElementById('countdown');
-  const footer = document.querySelector('.footer');
+/* ============================================================
+   狀態
+   ============================================================ */
+let countdowns = [];
+let currentId  = null;
+let timerId    = null;
+let numEls     = {};
+let editingId  = null;
+let realtimeCh = null;
 
-  const pad = (n, len = 2) => String(n).padStart(len, '0');
+const $   = id => document.getElementById(id);
+const pad = (n, len = 2) => String(n).padStart(len, '0');
 
-  function update() {
-    const now = Date.now();
-    let diff = targetDate - now;
+const cNameEl     = $('cName');
+const cSubEl      = $('cSub');
+const countdownEl = $('countdown');
+const ctrlEl      = $('ctrl');
+const tabsEl      = $('tabs');
+const statusEl    = $('status');
 
-    // 時間到
-    if (diff <= 0) {
-      countdownBox.innerHTML = '<div class="finished">Matthew 已經離開了。</div>';
-      footer.textContent = 'TIME IS UP';
-      clearInterval(timer);
-      return;
-    }
+function toLocalInput(d){
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+       + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtTarget(str){
+  const d = new Date(str);
+  if (isNaN(d)) return str;
+  return `${d.getFullYear()} . ${pad(d.getMonth()+1)} . ${pad(d.getDate())} `
+       + `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
+}
+function setStatus(text, cls){
+  statusEl.textContent = text;
+  statusEl.className = 'status' + (cls ? ' ' + cls : '');
+}
 
-    const totalSeconds = Math.floor(diff / 1000);
+/* ============================================================
+   Supabase 資料操作
+   ============================================================ */
+async function fetchAll(){
+  const { data, error } = await db
+    .from('countdowns')
+    .select('*')
+    .order('created_at', { ascending: true });
 
-    const days    = Math.floor(totalSeconds / 86400);
-    const hours   = Math.floor((totalSeconds % 86400) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
+  if (error) throw error;
+  return data || [];
+}
 
-    el.days.textContent    = days;
-    el.hours.textContent   = pad(hours);
-    el.minutes.textContent = pad(minutes);
+async function insertRow(item){
+  const { data, error } = await db
+    .from('countdowns')
+    .insert({
+      name:     item.name,
+      subtitle: item.subtitle || '',
+      target:   item.target
+    })
+    .select()
+    .single();
 
-    // 秒數變化時加入跳動動畫
-    if (el.seconds.textContent !== pad(seconds)) {
-      el.seconds.textContent = pad(seconds);
-      el.seconds.classList.remove('pulse');
-      void el.seconds.offsetWidth; // 重設動畫
-      el.seconds.classList.add('pulse');
-    }
+  if (error) throw error;
+  return data;
+}
+
+async function updateRow(id, item){
+  const { data, error } = await db
+    .from('countdowns')
+    .update({
+      name:     item.name,
+      subtitle: item.subtitle || '',
+      target:   item.target
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function deleteRow(id){
+  const { error } = await db
+    .from('countdowns')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+/* ============================================================
+   渲染
+   ============================================================ */
+function current(){
+  return countdowns.find(c => c.id === currentId) || null;
+}
+
+function renderTabs(){
+  tabsEl.innerHTML = '';
+  tabsEl.style.display = countdowns.length ? '' : 'none';
+
+  countdowns.forEach(c => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tab' + (c.id === currentId ? ' active' : '');
+    b.textContent = c.name;
+    b.title = c.name;
+    b.addEventListener('click', () => {
+      if (currentId === c.id) return;
+      currentId = c.id;
+      renderAll();
+    });
+    tabsEl.appendChild(b);
+  });
+}
+
+function renderStage(){
+  const c = current();
+
+  if (!c){
+    cNameEl.textContent = '還沒有任何倒數';
+    cSubEl.textContent  = '點擊右上角「＋ 新增倒數」開始';
+    countdownEl.innerHTML = '';
+    ctrlEl.style.display = 'none';
+    return;
   }
 
-  update();
-  const timer = setInterval(update, 200);
+  ctrlEl.style.display = '';
+  cNameEl.textContent = c.name;
+  cSubEl.textContent  = c.subtitle || fmtTarget(c.target);
+
+  countdownEl.innerHTML = `
+    <div class="unit"><span class="number" data-k="days">--</span><span class="label">天 DAYS</span></div>
+    <div class="unit"><span class="number" data-k="hours">--</span><span class="label">時 HOURS</span></div>
+    <div class="unit"><span class="number" data-k="minutes">--</span><span class="label">分 MINUTES</span></div>
+    <div class="unit"><span class="number" data-k="seconds">--</span><span class="label">秒 SECONDS</span></div>
+  `;
+
+  numEls = {
+    days:    countdownEl.querySelector('[data-k="days"]'),
+    hours:   countdownEl.querySelector('[data-k="hours"]'),
+    minutes: countdownEl.querySelector('[data-k="minutes"]'),
+    seconds: countdownEl.querySelector('[data-k="seconds"]')
+  };
+}
+
+function pulse(el){
+  el.classList.remove('pulse');
+  void el.offsetWidth;
+  el.classList.add('pulse');
+}
+
+function tick(){
+  const c = current();
+  if (!c || !numEls.days) return;
+
+  const target = new Date(c.target).getTime();
+  if (isNaN(target)) return;
+
+  const diff = target - Date.now();
+
+  if (diff <= 0){
+    countdownEl.innerHTML =
+      `<div class="finished">${escapeHtml(c.name)}　已經到了</div>`;
+    return;
+  }
+
+  const total   = Math.floor(diff / 1000);
+  const days    = Math.floor(total / 86400);
+  const hours   = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+
+  numEls.days.textContent    = days;
+  numEls.hours.textContent   = pad(hours);
+  numEls.minutes.textContent = pad(minutes);
+
+  const sTxt = pad(seconds);
+  if (numEls.seconds.textContent !== sTxt){
+    numEls.seconds.textContent = sTxt;
+    pulse(numEls.seconds);
+  }
+}
+
+function startTimer(){
+  clearInterval(timerId);
+  timerId = setInterval(tick, 200);
+  tick();
+}
+
+function renderAll(){
+  renderTabs();
+  renderStage();
+  startTimer();
+}
+
+/* ============================================================
+   載入 & 實時同步
+   ============================================================ */
+async function loadAll(){
+  try{
+    setStatus('連線中…');
+    countdowns = await fetchAll();
+
+    // 若資料庫完全空的，插入一筆預設範例
+    if (countdowns.length === 0){
+      const created = await insertRow({
+        name:     '距離Matthew離開',
+        subtitle: '2027 . 07 . 15',
+        target:   '2027-07-15T00:00'
+      });
+      countdowns = [created];
+    }
+
+    if (!countdowns.find(c => c.id === currentId)){
+      currentId = countdowns[0].id;
+    }
+    renderAll();
+    setStatus('● 已連線', 'ok');
+  }catch(err){
+    console.error(err);
+    setStatus('● 連線失敗', 'err');
+    cNameEl.textContent = '無法連線到資料庫';
+    cSubEl.textContent  = err.message || String(err);
+  }
+}
+
+function setupRealtime(){
+  if (realtimeCh) db.removeChannel(realtimeCh);
+
+  realtimeCh = db
+    .channel('countdowns-realtime')
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'countdowns' },
+      async () => {
+        try{
+          countdowns = await fetchAll();
+          if (!countdowns.find(c => c.id === currentId)){
+            currentId = countdowns.length ? countdowns[0].id : null;
+          }
+          renderAll();
+        }catch(e){ console.warn(e); }
+      }
+    )
+    .subscribe();
+}
+
+/* ============================================================
+   表單（新增 / 編輯）
+   ============================================================ */
+const overlay = $('overlay');
+const form    = $('form');
+
+function openForm(id){
+  editingId = id || null;
+  const c = id ? countdowns.find(x => x.id === id) : null;
+
+  $('formTitle').textContent = c ? '編輯倒數' : '新增倒數';
+  $('fName').value = c ? c.name : '';
+  $('fSub').value  = c ? (c.subtitle || '') : '';
+  $('fTime').value = c ? toLocalInput(new Date(c.target))
+                       : toLocalInput(new Date(Date.now() + 86400000 * 30));
+
+  overlay.classList.add('show');
+  setTimeout(() => $('fName').focus(), 60);
+}
+
+function closeForm(){
+  overlay.classList.remove('show');
+  editingId = null;
+  $('btnSave').disabled = false;
+  $('btnSave').textContent = '儲存';
+}
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+
+  const name   = $('fName').value.trim();
+  const sub    = $('fSub').value.trim();
+  const target = $('fTime').value;
+
+  if (!name || !target) return;
+
+  $('btnSave').disabled = true;
+  $('btnSave').textContent = '儲存中…';
+
+  try{
+    if (editingId){
+      const updated = await updateRow(editingId, { name, subtitle: sub, target });
+      const idx = countdowns.findIndex(c => c.id === editingId);
+      if (idx !== -1) countdowns[idx] = updated;
+    }else{
+      const created = await insertRow({ name, subtitle: sub, target });
+      countdowns.push(created);
+      currentId = created.id;
+    }
+    closeForm();
+    renderAll();
+  }catch(err){
+    alert('儲存失敗：' + (err.message || err));
+    $('btnSave').disabled = false;
+    $('btnSave').textContent = '儲存';
+  }
+});
+
+$('btnCancel').addEventListener('click', closeForm);
+overlay.addEventListener('click', e => { if (e.target === overlay) closeForm(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && overlay.classList.contains('show')) closeForm();
+});
+
+/* ============================================================
+   按鈕事件
+   ============================================================ */
+$('btnAdd').addEventListener('click', () => openForm(null));
+
+$('btnEdit').addEventListener('click', () => {
+  if (current()) openForm(currentId);
+});
+
+$('btnDelete').addEventListener('click', async () => {
+  const c = current();
+  if (!c) return;
+  if (!confirm(`確定要刪除「${c.name}」嗎？`)) return;
+
+  try{
+    await deleteRow(c.id);
+    countdowns = countdowns.filter(x => x.id !== c.id);
+    currentId  = countdowns.length ? countdowns[0].id : null;
+    renderAll();
+  }catch(err){
+    alert('刪除失敗：' + (err.message || err));
+  }
+});
+
+/* ============================================================
+   啟動
+   ============================================================ */
+(async () => {
+  await loadAll();
+  setupRealtime();
+})();
 </script>
 
 </body>
