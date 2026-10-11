@@ -216,7 +216,7 @@
       <label>副標題（選填）
         <input id="fSub" maxlength="60" placeholder="例如：2027 . 07 . 15">
       </label>
-      <label>結束時間
+      <label>結束時間（本地時間）
         <input type="datetime-local" id="fTime" required>
       </label>
       <div class="modal-actions">
@@ -255,16 +255,28 @@ const ctrlEl      = $('ctrl');
 const tabsEl      = $('tabs');
 const statusEl    = $('status');
 
+/* ---------- 時間工具 ---------- */
+
+// Date → "YYYY-MM-DDTHH:MM"（本地時間，給 datetime-local input 用）
 function toLocalInput(d){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
        + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+// "YYYY-MM-DDTHH:MM"（本地） → ISO 字串（UTC，給 Supabase 存）
+// 這是修復 +8 小時問題的關鍵
+function toISOString(localStr){
+  return new Date(localStr).toISOString();
+}
+
+// 顯示用：把時間格式化成「YYYY . MM . DD HH:MM」（本地時間）
 function fmtTarget(str){
   const d = new Date(str);
   if (isNaN(d)) return str;
   return `${d.getFullYear()} . ${pad(d.getMonth()+1)} . ${pad(d.getDate())} `
        + `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m =>
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
@@ -293,7 +305,7 @@ async function insertRow(item){
     .insert({
       name:     item.name,
       subtitle: item.subtitle || '',
-      target:   item.target
+      target:   item.target      // 已經是 ISO / UTC
     })
     .select()
     .single();
@@ -393,6 +405,7 @@ function tick(){
   const c = current();
   if (!c || !numEls.days) return;
 
+  // c.target 是 ISO 字串，new Date() 會自動處理時區
   const target = new Date(c.target).getTime();
   if (isNaN(target)) return;
 
@@ -446,7 +459,7 @@ async function loadAll(){
       const created = await insertRow({
         name:     '距離Matthew離開',
         subtitle: '2027 . 07 . 15',
-        target:   '2027-07-15T00:00'
+        target:   toISOString('2027-07-15T00:00')   // 本地 00:00 轉 UTC
       });
       countdowns = [created];
     }
@@ -497,6 +510,7 @@ function openForm(id){
   $('formTitle').textContent = c ? '編輯倒數' : '新增倒數';
   $('fName').value = c ? c.name : '';
   $('fSub').value  = c ? (c.subtitle || '') : '';
+  // 從 ISO 轉回本地 datetime-local 格式（瀏覽器會自動處理時區）
   $('fTime').value = c ? toLocalInput(new Date(c.target))
                        : toLocalInput(new Date(Date.now() + 86400000 * 30));
 
@@ -514,9 +528,11 @@ function closeForm(){
 form.addEventListener('submit', async e => {
   e.preventDefault();
 
-  const name   = $('fName').value.trim();
-  const sub    = $('fSub').value.trim();
-  const target = $('fTime').value;
+  const name      = $('fName').value.trim();
+  const sub       = $('fSub').value.trim();
+  const localTime = $('fTime').value;         // "2027-07-15T02:00"（本地）
+  // ★ 關鍵：轉成 UTC ISO 再送給 Supabase，避免 +8 小時偏移
+  const target    = toISOString(localTime);
 
   if (!name || !target) return;
 
